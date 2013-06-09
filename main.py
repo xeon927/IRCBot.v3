@@ -1,5 +1,5 @@
 import socket
-#import strings
+import re
 
 #Server Settings
 HOST = "192.168.1.253"
@@ -9,26 +9,27 @@ PORT = 6667
 nickname = "IRCBotV3"
 username = "Steve"
 realname = "Steve The (Python) Bot"
-channel = "#MLP,#ACorp"
+channel = "#test"
+owner = "xeon927"
 
 #NickServ Settings
 nsUse = False
 nsPass = "Herpaderpa"
 
-loggedIn = firstPing = nickSent = userSent = canRegex= False
+loggedIn = firstPing = nickSent = userSent = canRegex = False
 firstRun = True
-
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect((HOST, PORT))
 
 def main():
 	string = str()
 	try:
+		servConnect()
 		while True:
 			data = sock.recv(1).decode("utf-8")
 			if data == "\r":
 				sock.recv(1)
-				print("<<< " + string)
+				if not string[:6] == "PING :":
+					print("<<< " + string)
 				check(string)
 				if not loggedIn:
 					runLogin()
@@ -37,12 +38,13 @@ def main():
 			string += data
 	except KeyboardInterrupt:
 		servSend("QUIT :Killed by console.")
-		print("Killing")
 	#except:
-		#print("Well, fuck.")
+		#print("Something went wrong!")
+def servConnect():
+	sock.connect((HOST, PORT))
 
 def runLogin():
-	global firstRun, nickSent, firstPing, userSent, loggedIn
+	global firstRun, nickSent, firstPing, userSent, loggedIn, canRegex
 	if firstRun:
 		firstRun = False
 		return
@@ -59,17 +61,21 @@ def runLogin():
 			sendNickServ()
 		joinChan(channel)
 		loggedIn = True
+		canRegex = True
 
+#Basic Server Stuff
 def servSend(message):
 	sock.send((message + "\r\n").encode("utf-8"))
-	print(">>> " + message)
-
+	if not message[:6] == "PONG :":
+		print(">>> " + message)
 def joinChan(chanlist):
 	servSend("JOIN %(0)s" % {"0": chanlist})
-
+def partChan(chanlist):
+	servSend("PART %(0)s" % {"0": chanlist})
 def sendNickServ():
 	servSend("PRIVMSG NickServ IDENTIFY %(0)s" % {"0": nsPass})
 	
+#Message Checking
 def check(message):
 	checkPing(message)
 	checkDisconnect(message)
@@ -82,8 +88,24 @@ def checkPing(message):
 				firstPing = True
 def checkDisconnect(message):
 	global canRegex, loggedIn, firstPing, nickSent, userSent, firstRun
-	canRegex = loggedIn = firstPing = nickSent = userSent = firstRun = False
 	if len(message) >= len("ERROR :CLOSING LINK:"):
 		if message[:len("ERROR :CLOSING LINK:")] == "ERROR :CLOSING LINK:":
-			
+			canRegex = loggedIn = firstPing = nickSent = userSent = firstRun = False
+			main()
+
+#Regular Expressions and Stuff
+def msgRegex(request, message):
+	#Use:
+	#msgRegex("nickname", message) for nickname
+	#msgRegex("username", message) for username
+	#msgRegex("hostname", message) for hostname
+	#msgRegex("channel", message) for channel
+	#msgRegex("message", message) for message
+	global canRegex
+	if canRegex:
+		regexPattern = r"^:(?P<nickname>.+?)!(?P<username>.+?)@(?P<hostname>.+?)\ PRIVMSG\ (?P<channel>.+?)\ :(?P<message>.+?)$"
+		if re.match(regexPattern, message):
+			m = re.match(regexPattern, message)
+			return m.group(request)
+		
 main()
